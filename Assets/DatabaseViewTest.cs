@@ -46,6 +46,7 @@ public class DatabaseViewTest : IDisposable
         });
     }
 
+    /*
     public void WriteRubbish(string rubbish)
     {
         string query = $"CREATE ( :RUBBISH {{rubbish: '{rubbish}'}} )";
@@ -54,5 +55,5 @@ public class DatabaseViewTest : IDisposable
         {
             return tx.Run(query).Consume();
         });
-    }
+    } */
 }
