@@ -5,48 +5,43 @@ using System.Collections;
 
 public class UnityWebTest : MonoBehaviour
 {
-    void Start()
+    public float WaitTime = 10f;
+
+    IEnumerator Start()
     {
         // A correct website page.
-        StartCoroutine(GetRequest("http://cloud-vm-42-36.doc.ic.ac.uk:7474/"));
-
-        // A non-existing page.
-        // StartCoroutine(GetRequest("https://error.html"));
+        CoroutineWithData routine = new CoroutineWithData(this, GetRequest("http://cloud-vm-42-36.doc.ic.ac.uk:7474/"));
+        yield return routine.coroutine;
+        Debug.Log($"Start() function received response \n {routine.result}");
     }
 
     IEnumerator GetRequest(string uri)
     {
-        using (UnityWebRequest webRequest = UnityWebRequest.Get(uri))
+        using UnityWebRequest webRequest = UnityWebRequest.Get(uri);
+
+        yield return webRequest.SendWebRequest();        
+
+        switch (webRequest.result)
         {
-            // Request and wait for the desired page.
-            webRequest.certificateHandler = new BypassCertificate();
-            yield return webRequest.SendWebRequest();
+            case UnityWebRequest.Result.ConnectionError:
+                Debug.LogError($"Uri: {uri}: connection error: \n{webRequest.error}");
+                yield return webRequest.error;
+                break;
 
-            string[] pages = uri.Split('/');
-            int page = pages.Length - 1;
+            case UnityWebRequest.Result.DataProcessingError:
+                Debug.LogError($"Uri: {uri}: data processing error: \n{webRequest.error}");
+                yield return webRequest.error;
+                break;
 
-            switch (webRequest.result)
-            {
-                case UnityWebRequest.Result.ConnectionError:
-                case UnityWebRequest.Result.DataProcessingError:
-                    Debug.LogError(pages[page] + ": Error: " + webRequest.error);
-                    break;
-                case UnityWebRequest.Result.ProtocolError:
-                    Debug.LogError(pages[page] + ": HTTP Error: " + webRequest.error);
-                    break;
-                case UnityWebRequest.Result.Success:
-                    Debug.Log(pages[page] + ":\nReceived: " + webRequest.downloadHandler.text);
-                    break;
-            }
+            case UnityWebRequest.Result.ProtocolError:
+                Debug.LogError($"Uri: {uri}: protocol error: \n{webRequest.error}");
+                yield return webRequest.error;
+                break;
+
+            case UnityWebRequest.Result.Success: 
+            default:
+                yield return webRequest.downloadHandler.text;
+                break;
         }
-    }
-}
-
-public class BypassCertificate : CertificateHandler
-{
-    protected override bool ValidateCertificate(byte[] certificateData)
-    {
-        //Simply return true no matter what
-        return true;
     }
 }
