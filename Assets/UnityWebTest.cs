@@ -1,7 +1,10 @@
 using UnityEngine;
 using UnityEngine.Networking;
+using System.Collections.Generic;
 using System;
 using System.Collections;
+using System.Linq;
+using Newtonsoft.Json.Linq;
 
 public class UnityWebTest : MonoBehaviour
 {
@@ -10,18 +13,14 @@ public class UnityWebTest : MonoBehaviour
     {
         // A correct website page.
         //var routine = new CoroutineWithData(this, GetRequest("http://cloud-vm-42-36.doc.ic.ac.uk:7474/"));
-        string postUrl = "http://cloud-vm-42-36.doc.ic.ac.uk:7474/db/neo4j/tx";
-        string postJson = @"{
-  ""statements"": [
-    {
-      ""statement"": ""CREATE (n) RETURN n""
-    }
-  ]
-}";
+        yield return StartCoroutine(
+            SendWriteTransactions("CREATE (x :RUBBISH {title: 'hi'})")
+        );
 
-        var routine = new CoroutineWithData(this, PostRequest(postUrl, postJson));
-        yield return routine.coroutine;
-        Debug.Log($"Start() function received response \n {routine.GetResult<string>()}");
+        yield return StartCoroutine(
+            SendReadTransaction("MATCH (x :RUBBISH) RETURN x", 
+            r => Debug.Log(r)
+        ));
     }
 
     IEnumerator GetRequest(string uri)
@@ -54,7 +53,7 @@ public class UnityWebTest : MonoBehaviour
         }
     }
 
-    IEnumerator PostRequest(string uri, string postJson)
+    IEnumerator PostRequest(string uri, string postJson, Action<string> processResponse = null)
     {
         using var webRequest = new UnityWebRequest(uri, "POST");
 
@@ -93,7 +92,84 @@ public class UnityWebTest : MonoBehaviour
             case UnityWebRequest.Result.Success: 
             default:
                 yield return webRequest.downloadHandler.text;
+                if (processResponse != null)
+                    processResponse(webRequest.downloadHandler.text);
                 break;
         }
     }
+
+
+    IEnumerator SendReadTransaction(string query, Action<JObject> processResponse = null)
+    {
+        string transactionUrl = $"http://cloud-vm-42-36.doc.ic.ac.uk:7474/db/neo4j/tx/commit";
+        string queryJson = @"{
+            ""statements"": [{
+                ""statement"": "" " + query + @" ""
+            }]
+        }";
+
+        string response = "";
+        yield return PostRequest(transactionUrl, queryJson, (r) => response = r);
+        var responseJson = JObject.Parse(response);
+
+        HandleErrorsFromResponse(query, responseJson);
+        Debug.Log($"Read query response = {response}");
+
+        if (processResponse != null)
+            processResponse.Invoke(responseJson);
+    }
+
+
+    IEnumerator SendWriteTransactions(params string[] queries)
+    {
+        string transactionUrl = $"http://cloud-vm-42-36.doc.ic.ac.uk:7474/db/neo4j/tx/"; // will need to be updated to ".../neo4j/tx/{transaction id number}"
+        string commitUrl = ""; 
+        bool updatedUrls = false;
+
+        foreach (string query in queries)
+        {
+            string queryJson = @"{
+            ""statements"": [{ 
+                    ""statement"":  "" " + query + @" ""
+                }]
+            }";
+
+            string response = "";
+            yield return PostRequest(transactionUrl, queryJson, (r) => response = r);
+            var responseJson = JObject.Parse(response);
+            HandleErrorsFromResponse(query, responseJson);
+                
+            if (!updatedUrls)
+            {
+                commitUrl = (string) responseJson["commit"];
+                transactionUrl = Before(commitUrl, "/commit");                
+                updatedUrls = true;
+            }
+        }
+
+        string commitJson = @"{ 
+            ""statements"": []
+        }"; 
+        string commitResponse = "";
+
+        yield return PostRequest(commitUrl, commitJson, (r) => commitResponse = r);
+        Debug.Log($"Write commit response = {commitResponse}");
+    }
+
+    private static void HandleErrorsFromResponse(string query, JObject responseJson)
+    {            
+        List<string> errors = responseJson["errors"]
+            .Select(entry => (string) entry)
+            .ToList();
+        
+        if (errors.Any())
+        {
+            string errorLog = $"Error running query {query}\n" + string.Join("\n", errors);
+            Debug.LogError(errorLog);
+            throw new InvalidOperationException(errorLog);
+        }
+    }
+
+    private static string Before(string body, string section)
+        => body.Split(new string[] {section}, StringSplitOptions.None)[0];
 }

@@ -1,4 +1,4 @@
-using System;
+/*using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -28,4 +28,4 @@ public class CoroutineWithData
 
     public T GetResult<T>() where T : class
         => result as T;
-}
+} */
