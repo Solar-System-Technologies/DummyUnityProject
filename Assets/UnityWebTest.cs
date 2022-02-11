@@ -23,6 +23,7 @@ public class UnityWebTest : MonoBehaviour
         ));
     }
 
+
     IEnumerator GetRequest(string uri)
     {
         using UnityWebRequest webRequest = UnityWebRequest.Get(uri);
